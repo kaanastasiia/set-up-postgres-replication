@@ -13,6 +13,10 @@
     ansible.builtin.dnf:
       name: postgresql15-server
       state: present
+  - name: Install psycopg2
+    ansible.builtin.dnf:
+      name: python3-psycopg2
+      state: present
   - name: Start and enable only primary postgres host
     ansible.builtin.service:
       name: postgresql-15
