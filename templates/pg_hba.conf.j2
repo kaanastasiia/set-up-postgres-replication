@@ -10,5 +10,4 @@ host    all             all             ::1/128                 scram-sha-256
 local   replication     all                                     peer
 host    replication     all             127.0.0.1/32            scram-sha-256
 host    replication     all             ::1/128                 scram-sha-256
-#host    replication     replicator      {% if "primary" in hostvars[inventory_hostname] %} {{ hostvars["postgres-stanby"]["ansible_default_ipv4"]["address"] }} {% else %} {{ hostvars["postgres-primary"]["ansible_default_ipv4"]["address"] }} {% endif %}   scram-sha-256
 host    replication     replicator      {{ hostvars["postgres-standby"]["ansible_default_ipv4"]["address"] }}/32     scram-sha-256
