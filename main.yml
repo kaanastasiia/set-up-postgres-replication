@@ -1,10 +1,12 @@
 ---
 - name: Install postgres
   hosts: postgres-hosts
+  pre_tasks:
+    - name: Install psycopg2
+      ansible.builtin.dnf:
+        name: python3-psycopg2
+        state: present
   tasks:
-  - name: debub
-    ansible.builtin.debug:
-      var: hostvars[inventory_hostname]['ansible_default_ipv4']['address']
   - name: Include variables
     ansible.builtin.include_vars:
       file: vars.yml
@@ -19,16 +21,20 @@
     ansible.builtin.dnf:
       name: postgresql15-server
       state: present
-  - name: Install psycopg2
-    ansible.builtin.dnf:
-      name: python3-psycopg2
-      state: present
-  - name: Start and enable only primary postgres host
+  - name: Open firewalld port
+    ansible.posix.firewalld:
+      port: "{{ listen_port }}/tcp"
+      permanent: true
+      state: enabled
+  - name: Restart Firewalld
+    ansible.builtin.service:
+      name: firewalld
+      state: restarted
+  - name: Start and enable postgres
     ansible.builtin.service:
       name: postgresql-15
       state: started
       enabled: yes
-    when: inventory_hostname == "postgres-primary"
   - name: Copy postgresql.conf
     ansible.builtin.template:
       src: postgresql.conf.j2
@@ -36,3 +42,44 @@
       owner: postgres
       group: postgres
       mode: u+rw
+  - name: Change postgres auth method on postgres-primary
+    ansible.builtin.replace: 
+      path: /var/lib/pgsql/15/data/pg_hba.conf
+      regexp: 'peer'
+      replace: 'trust'
+  - name: Reload postgres on postgre-primary
+    ansible.builtin.service:
+      name: postgresql-15
+      state: reloaded
+    when: inventory_hostname == "postgres-primary"
+  - name: Create replication user on postgres-primary
+    become_user: postgres
+    community.postgresql.postgresql_user:
+      name: replicator
+      password: '{{ replicator_password }}'
+      role_attr_flags: REPLICATION
+    when: inventory_hostname == "postgres-primary"
+  - name: Copy pg_hba.conf
+    ansible.builtin.template:
+      src: pg_hba.conf.j2
+      dest: /var/lib/pgsql/15/data/pg_hba.conf
+      owner: postgres
+      group: postgres
+      mode: u+rw
+  - name: Remove postgres data directory on postgre-standby
+    ansible.builtin.file:
+      path: /var/lib/pgsql/15/data
+      state: absent
+    when: inventory_hostname == "postgres-standby"
+  - name: Copy data from primary to standby
+    become_user: postgres
+    ansible.builtin.expect:
+      command: /usr/bin/pg_basebackup -h {{ hostvars["postgres-primary"]["ansible_default_ipv4"]["address"] }} -U replicator -p 5432 -D /var/lib/pgsql/15/data -R -P
+      responses:
+        '.*Password*': '{{ replicator_password }}'
+    no_log: true
+    when: inventory_hostname == "postgres-standby"
+  - name: Restart postgres
+    ansible.builtin.service:
+      name: postgresql-15
+      state: restarted
