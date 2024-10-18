@@ -7,6 +7,6 @@ postgres-hosts:
       ansible_host: 192.168.1.8
 
   vars: 
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o ProxyCommand="ssh root@public-ip -o Port=1122 -W %h:%p"'
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o ProxyCommand="ssh root@some-ip -o Port=1122 -W %h:%p"'
     ansible_user: root
   

@@ -12,14 +12,14 @@
       file: vars.yml
   - name: Install postgres repository
     ansible.builtin.dnf:
-      name: 'https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm'
+      name: "{{ postgres_repository }}"
       state: present
       disable_gpg_check: true
   - name: Disable postgres built-in module
     ansible.builtin.command: dnf -qy module disable postgresql
-  - name: Install postgres-15
+  - name: Install postgres
     ansible.builtin.dnf:
-      name: postgresql15-server
+      name: "{{ postgres_version }}"
       state: present
   - name: Open firewalld port
     ansible.posix.firewalld:
@@ -30,28 +30,35 @@
     ansible.builtin.service:
       name: firewalld
       state: restarted
+  - name: Check if there's anything in postgres data directory
+    ansible.builtin.command: ls "{{ postgres_data_dir }}"
+    register: ls_output
+  - name: Initialize db
+    ansible.builtin.command: "{{ postgres_setup_bin }} initdb"
+    when: ls_output.stdout == ""
   - name: Start and enable postgres
     ansible.builtin.service:
-      name: postgresql-15
+      name: "{{ postgres_service }}"
       state: started
       enabled: yes
   - name: Copy postgresql.conf
     ansible.builtin.template:
       src: postgresql.conf.j2
-      dest: /var/lib/pgsql/15/data/postgresql.conf
+      dest: "{{ postgres_data_dir }}/postgresql.conf"
       owner: postgres
       group: postgres
       mode: u+rw
+  # Ansible throws an authentication error if it's not changed, even though become_user is used when creating a replication user 
   - name: Change postgres auth method on postgres-primary
     ansible.builtin.replace: 
-      path: /var/lib/pgsql/15/data/pg_hba.conf
+      path: "{{ postgres_data_dir }}/pg_hba.conf"
       regexp: 'peer'
       replace: 'trust'
-  - name: Reload postgres on postgre-primary
-    ansible.builtin.service:
-      name: postgresql-15
-      state: reloaded
     when: inventory_hostname == "postgres-primary"
+  - name: Restart postgres
+    ansible.builtin.service:
+      name: "{{ postgres_service }}"
+      state: restarted
   - name: Create replication user on postgres-primary
     become_user: postgres
     community.postgresql.postgresql_user:
@@ -62,24 +69,39 @@
   - name: Copy pg_hba.conf
     ansible.builtin.template:
       src: pg_hba.conf.j2
-      dest: /var/lib/pgsql/15/data/pg_hba.conf
+      dest: "{{ postgres_data_dir }}/pg_hba.conf"
       owner: postgres
       group: postgres
       mode: u+rw
-  - name: Remove postgres data directory on postgre-standby
+    when: inventory_hostname == "postgres-primary"   
+  - name: Restart primary postgres
+    ansible.builtin.service:
+      name: "{{ postgres_service }}"
+      state: restarted 
+    when: inventory_hostname == "postgres-primary"
+  - name: Remove postgres data directory on postgres-standby
     ansible.builtin.file:
-      path: /var/lib/pgsql/15/data
+      path: "{{ postgres_data_dir }}"
       state: absent
     when: inventory_hostname == "postgres-standby"
   - name: Copy data from primary to standby
     become_user: postgres
     ansible.builtin.expect:
-      command: /usr/bin/pg_basebackup -h {{ hostvars["postgres-primary"]["ansible_default_ipv4"]["address"] }} -U replicator -p 5432 -D /var/lib/pgsql/15/data -R -P
+      command: /usr/bin/pg_basebackup -h {{ hostvars["postgres-primary"]["ansible_default_ipv4"]["address"] }} -U replicator -p 5432 -D {{ postgres_data_dir }} -R -Xs -P
       responses:
         '.*Password*': '{{ replicator_password }}'
     no_log: true
     when: inventory_hostname == "postgres-standby"
+  - name: Change data directory owner
+    ansible.builtin.file:
+      path: "{{ postgres_data_dir }}"
+      state: directory
+      recurse: yes
+      owner: postgres
+      group: postgres
+    when: inventory_hostname == "postgres-standby"    
   - name: Restart postgres
     ansible.builtin.service:
-      name: postgresql-15
+      name: "{{ postgres_service }}"
       state: restarted
+    when: inventory_hostname == "postgres-standby"  
