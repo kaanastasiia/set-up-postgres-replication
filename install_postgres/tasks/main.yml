@@ -1,0 +1,7 @@
+---
+  - name: Install postgres for Redhat
+    include_tasks: "{{ ansible_os_family }}.yml"
+    when: ansible_os_family == 'RedHat'
+  - name: Install postgres for Ubuntu
+    include_tasks: "{{ ansible_os_family }}.yml"
+    when: ansible_os_family == 'Debian'

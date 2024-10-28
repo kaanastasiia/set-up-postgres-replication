@@ -1,0 +1,19 @@
+  - name: Include vars
+    ansible.builtin.include_vars:
+      file: "vars/{{ ansible_os_family }}-vars.yml"
+#Needed for launching postgresql_user role
+  - name: Install psycopg2
+    ansible.builtin.apt:
+      name: python3-psycopg2
+      state: present
+  - name: Install postgres repository
+    ansible.builtin.dnf:
+      name: "{{ postgres_repository }}"
+      state: present
+      disable_gpg_check: true
+  - name: Disable postgres built-in module
+    ansible.builtin.command: dnf -qy module disable postgresql
+  - name: Install postgres
+    ansible.builtin.dnf:
+      name: "{{ postgres_version }}"
+      state: present
