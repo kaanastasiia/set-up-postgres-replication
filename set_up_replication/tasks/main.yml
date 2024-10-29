@@ -1,4 +1,7 @@
 ---
+  - name: Include vars
+    ansible.builtin.include_vars:
+      file: vars.yml
   - name: Check if there's anything in postgres data directory
     ansible.builtin.command: ls "{{ postgres_data_dir }}"
     register: ls_output

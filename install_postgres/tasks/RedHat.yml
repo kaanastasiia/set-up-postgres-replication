@@ -1,6 +1,6 @@
   - name: Include vars
     ansible.builtin.include_vars:
-      file: "vars/{{ ansible_os_family }}-vars.yml"
+      file: "{{ ansible_os_family }}-vars.yml"
 #Needed for launching postgresql_user role
   - name: Install psycopg2
     ansible.builtin.dnf:
